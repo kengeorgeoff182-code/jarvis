@@ -43,6 +43,7 @@ Open http://localhost:5173 — the page shows the live API connection status.
 ## Verification gates (all must pass before any change is done)
 
 ```bash
+npm run format:check # Prettier
 npm run lint         # ESLint
 npm run typecheck    # tsc --noEmit across all workspaces
 npm run test         # Vitest (api via inject, web via Testing Library)
@@ -80,5 +81,6 @@ Architecture and decisions: `docs/architecture.md`, `docs/adr/`.
   WSL VM idle-terminates ~60s after the last `wsl.exe` exits, so keep a
   terminal open while developing. See `docs/adr/0004-repo-location.md`;
   relocation is a planned follow-up.
-- No CI yet — no remote repository exists. The local gate chain is the CI
-  contract for now.
+- CI runs via GitHub Actions (`.github/workflows/ci.yml`): format,
+  lint, typecheck, test, and build on every push and pull request. It is
+  dormant until the repository has a remote.

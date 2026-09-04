@@ -1,12 +1,18 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
+import { DatabaseSync } from 'node:sqlite';
 import { buildApp } from '../src/app';
 import { loadConfig } from '../src/config';
 
 const instances: FastifyInstance[] = [];
 
 async function buildTestApp(): Promise<FastifyInstance> {
-  const app = await buildApp({ config: loadConfig({ NODE_ENV: 'test' }), logger: false });
+  // In-memory database: tests never touch the filesystem.
+  const app = await buildApp({
+    config: loadConfig({ NODE_ENV: 'test' }),
+    logger: false,
+    db: new DatabaseSync(':memory:'),
+  });
   instances.push(app);
   return app;
 }

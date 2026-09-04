@@ -28,15 +28,15 @@ wired into the gate chain (`lint → typecheck → test → build`).
 
 ## 3. Naming
 
-| Thing | Convention | Example |
-|---|---|---|
-| Files | `kebab-case` | `conversation-service.ts` |
-| Functions, variables | `camelCase`, verbs for functions | `getConversation` |
-| Types, classes, components | `PascalCase`, nouns | `ConversationSummary` |
-| Constants (module-level) | `SCREAMING_SNAKE` | `MAX_MESSAGE_LENGTH` |
-| Environment variables | `SCREAMING_SNAKE`, app-prefixed | `JARVIS_LLM_API_KEY` |
-| Test files | `*.test.ts(x)`, colocated or in `test/` | `health.test.ts` |
-| React components | function components only | `ConversationList` |
+| Thing                      | Convention                              | Example                   |
+| -------------------------- | --------------------------------------- | ------------------------- |
+| Files                      | `kebab-case`                            | `conversation-service.ts` |
+| Functions, variables       | `camelCase`, verbs for functions        | `getConversation`         |
+| Types, classes, components | `PascalCase`, nouns                     | `ConversationSummary`     |
+| Constants (module-level)   | `SCREAMING_SNAKE`                       | `MAX_MESSAGE_LENGTH`      |
+| Environment variables      | `SCREAMING_SNAKE`, app-prefixed         | `JARVIS_LLM_API_KEY`      |
+| Test files                 | `*.test.ts(x)`, colocated or in `test/` | `health.test.ts`          |
+| React components           | function components only                | `ConversationList`        |
 
 Abbreviations stay all-caps where conventional (`API`, `HTTP`, `LLM`).
 
@@ -108,14 +108,18 @@ Abbreviations stay all-caps where conventional (`API`, `HTTP`, `LLM`).
   as production.
 - Web tests render with Testing Library, assert on user-visible text/roles,
   and stub `fetch`.
-- A change is not done until `lint`, `typecheck`, `test`, and `build` pass.
+- Web a11y: every rendered UI state is also audited with axe-core
+  (`expectNoAxeViolations` in `src/test/axe.ts`) — see the
+  `accessibility audit` describe block in `App.test.tsx`.
+- A change is not done until `format`, `lint`, `typecheck`, `test`, and
+  `build` pass.
 
 ## 11. Git & commits
 
 - Conventional Commits style: `feat:`, `fix:`, `refactor:`, `docs:`,
   `chore:`, `test:` (+ optional scope).
 - Keep commits focused; one logical change each.
-- When a remote exists, `main` must stay green and CI runs the same four
+- When a remote exists, `main` must stay green and CI runs the same five
   gates as the local scripts.
 
 ## 12. React components (from phase 2 on)
@@ -134,7 +138,8 @@ Abbreviations stay all-caps where conventional (`API`, `HTTP`, `LLM`).
   the visible text is insufficient.
 - Focus must never be trapped or lost; visible focus styles are required.
 - Color is never the only signal (error text includes an icon or wording).
-- Automated checks (axe) become part of the web test suite in phase 2.
+- Automated axe audits are part of the web test suite (see §10); treat a
+  new violation like a failed test — fix the UI, never silence the check.
 
 ## 14. Performance
 

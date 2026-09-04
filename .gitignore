@@ -6,6 +6,9 @@ dist/
 coverage/
 *.tsbuildinfo
 
+# Local SQLite data (never sync a live database)
+apps/api/data/
+
 # Environment (never commit secrets). Keep .env.example.
 .env
 .env.*

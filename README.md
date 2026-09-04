@@ -2,18 +2,20 @@
 
 Personal AI assistant — foundation phase.
 
-This repository is the phase-1 engineering baseline for Jarvis: a typed
-TypeScript monorepo with an HTTP API, a web client, and shared wire
-contracts, plus the architecture and conventions that future phases build
-on. It contains **no feature functionality yet** — by design, nothing is
-stubbed or mocked.
+This repository is the engineering baseline for Jarvis: a typed TypeScript
+monorepo with an HTTP API, a web client, and shared wire contracts, plus
+architecture and conventions docs. The first real feature — **persisted
+chat conversations** (create, list, open, send messages) — works end to end
+against a local SQLite store. Nothing is stubbed or mocked: assistant
+replies are deliberately absent until the LLM provider lands.
 
 ## Repository layout
 
 ```
-apps/api        Fastify HTTP API (health endpoint, error taxonomy,
-                env validation, structured logging)
-apps/web        React + Vite client (typed API client, a11y baseline)
+apps/api        Fastify HTTP API (health + conversation endpoints, error
+                taxonomy, SQLite persistence, env validation, logging)
+apps/web        React + Vite chat client (conversation sidebar, transcript,
+                composer — typed API client in src/lib/api.ts)
 packages/shared Shared zod contracts + inferred types (single source of
                 truth for every cross-boundary payload)
 docs/           architecture.md, conventions.md, adr/
@@ -46,18 +48,27 @@ Open http://localhost:5173 — the page shows the live API connection status.
 npm run format:check # Prettier
 npm run lint         # ESLint
 npm run typecheck    # tsc --noEmit across all workspaces
-npm run test         # Vitest (api via inject, web via Testing Library)
+npm run test         # Vitest (api via inject; web via Testing Library + axe)
 npm run build        # tsup (api) + vite build (web)
 ```
 
 ## API
 
-| Endpoint | Description |
-|---|---|
-| `GET /api/v1/health` | Liveness: `{ status, service, version, uptimeSeconds, timestamp }` |
+| Endpoint                                  | Description                                                        |
+| ----------------------------------------- | ------------------------------------------------------------------ |
+| `GET /api/v1/health`                      | Liveness: `{ status, service, version, uptimeSeconds, timestamp }` |
+| `GET /api/v1/conversations`               | Conversation summaries, most recently updated first                |
+| `POST /api/v1/conversations`              | Create a conversation (titled by its first message)                |
+| `GET /api/v1/conversations/:id`           | Full conversation with ordered messages                            |
+| `POST /api/v1/conversations/:id/messages` | Append a user message                                              |
 
-Every non-2xx response uses the error envelope
-`{ "error": { "code", "message", "details?" } }`.
+Conversations persist in a local SQLite database (`apps/api/data/jarvis.db`,
+gitignored; override with `DB_PATH`). Every non-2xx response uses the error
+envelope `{ "error": { "code", "message", "details?" } }`.
+
+Messages store a `role` (`user`/`assistant`/`system`) so transcripts render
+any role, but the public API only creates `user` messages — assistant
+replies arrive with the LLM integration phase.
 
 ## Configuration
 

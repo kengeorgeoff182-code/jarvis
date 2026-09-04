@@ -1,7 +1,8 @@
 # Jarvis — Architecture
 
-Status: foundation phase (phase 1). Feature modules (conversation, LLM
-integration, voice) are planned below but deliberately not implemented yet.
+Status: phase 2 in progress. The conversation feature (persisted chat
+sessions + messages, typed API, chat UI) is implemented. LLM integration
+and voice are planned below but deliberately not implemented yet.
 
 ## 1. System overview
 
@@ -54,16 +55,16 @@ seat for it (see §6). Everything runs as a local web application in phase 1.
 
 ## 3. Modules
 
-| Module | Purpose | Status |
-|---|---|---|
-| `packages/shared` | Wire contracts (zod) + inferred types | ✅ phase 1 |
-| `apps/api` | HTTP API: health, error taxonomy, config, logging | ✅ phase 1 |
-| `apps/web` | SPA shell + typed API client | ✅ phase 1 |
-| Conversation service | Chat sessions, message store | 🔜 phase 2 |
-| LLM provider | Provider-agnostic port; OpenAI-compatible adapter first | 🔜 phase 2 |
-| Auth | Local single-user identity (phase 2; see conventions) | 🔜 phase 2 |
-| Memory / persistence | Local database for conversation history | 🔜 phase 2 |
-| Voice | STT + TTS + wake word as adapters behind ports | 🔜 phase 3 |
+| Module               | Purpose                                                 | Status       |
+| -------------------- | ------------------------------------------------------- | ------------ |
+| `packages/shared`    | Wire contracts (zod) + inferred types                   | ✅ phase 1   |
+| `apps/api`           | HTTP API: health, error taxonomy, config, logging       | ✅ phase 1   |
+| `apps/web`           | SPA shell + typed API client                            | ✅ phase 1   |
+| Conversation service | Chat sessions, message store                            | ✅ phase 2   |
+| Memory / persistence | SQLite conversation history behind a store port         | ✅ phase 2   |
+| LLM provider         | Provider-agnostic port; OpenAI-compatible adapter first | 🔜 phase 2/3 |
+| Auth                 | Local single-user identity (see conventions)            | 🔜           |
+| Voice                | STT + TTS + wake word as adapters behind ports          | 🔜 phase 3   |
 
 ## 4. API conventions (summary)
 
@@ -88,15 +89,23 @@ See `docs/conventions.md` for the full text.
 - Web has no server-side config in phase 1 (Vite dev proxy is developer
   tooling, not app config).
 
-## 6. Phase 2+ roadmap (design intent — do not build yet)
+## 6. Roadmap (design intent — do not build ahead of need)
+
+Implemented in phase 2:
+
+- **Conversation persistence**: SQLite via the built-in `node:sqlite`, behind
+  the `ConversationStore` port (`src/ports/conversation-store.ts`); see
+  ADR-0005. Storage can graduate to Postgres by adding an adapter, never by
+  editing services.
+
+Planned next:
 
 - **LLM provider port** (`ports/llm-provider.ts`): `chat(messages, opts) →
-  AsyncIterable<Chunk>` for streaming; adapter negotiation by env key
+AsyncIterable<Chunk>` for streaming; adapter negotiation by env key
   (`LLM_PROVIDER=openai|anthropic|ollama|...`). New providers are new
-  adapters, never edits to services.
-- **Conversation store**: local persistence behind a `ConversationStore`
-  port so storage can start file-based and graduate to SQLite/Postgres
-  without touching services.
+  adapters, never edits to services. Until this lands, the public message
+  endpoint stores `user` messages only — `assistant` replies are a
+  server-side concern, not a client invention.
 - **Voice**: `speech-to-text` and `text-to-speech` ports + adapters; the
   conversation service does not know whether input came from typing or
   microphone.

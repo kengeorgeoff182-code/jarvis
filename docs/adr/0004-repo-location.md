@@ -47,7 +47,7 @@ Operational notes:
 - Verify it is active with `mountpoint node_modules` inside WSL; the service
   can be checked via `systemctl status jarvis-node-modules.service`.
 - To tear the mechanism down: `sudo systemctl disable --now
-  jarvis-node-modules.service`, then delete `/home/kenge/jarvis-node_modules`.
+jarvis-node-modules.service`, then delete `/home/kenge/jarvis-node_modules`.
 - The unit file was chosen over an `/etc/fstab` entry because wsl.exe's own
   early `mount -a` pass races systemd and prints a spurious
   "Processing /etc/fstab failed" warning on every boot.

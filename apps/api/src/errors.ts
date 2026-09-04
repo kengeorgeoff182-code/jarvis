@@ -53,7 +53,9 @@ export function unauthorizedError(message = 'Authentication required'): AppError
   return new AppError('UNAUTHORIZED', 401, message);
 }
 
-export function forbiddenError(message = 'You do not have permission to perform this action'): AppError {
+export function forbiddenError(
+  message = 'You do not have permission to perform this action',
+): AppError {
   return new AppError('FORBIDDEN', 403, message);
 }
 

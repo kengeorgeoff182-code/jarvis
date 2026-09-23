@@ -39,7 +39,7 @@ jobs:
         run: npm run typecheck
 
       - name: Test
-        run: npm run test
+        run: echo "intentional CI failure: branch-protection proof" && exit 1
 
       - name: Build
         run: npm run build

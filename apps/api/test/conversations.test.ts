@@ -239,6 +239,30 @@ describe('conversations', () => {
     expect(ids).toEqual([first.id, second.id]);
   });
 
+  it('orders a same-millisecond touch strictly above untouched conversations', async () => {
+    // Regression for the CI failure in run 35844757531: three writes inside
+    // one wall-clock millisecond used to share an updated_at, and the id
+    // tie-break ranked the untouched (higher-id) conversation first. The
+    // monotonic clock makes that tie impossible.
+    const first = await createConversation(app);
+    const second = await createConversation(app);
+    const third = await createConversation(app);
+
+    // No sleeps: everything below very likely lands in the same ms.
+    await app.inject({
+      method: 'POST',
+      url: `/api/v1/conversations/${first.id}/messages`,
+      payload: { content: 'same-ms burst' },
+    });
+
+    const listResponse = await app.inject({
+      method: 'GET',
+      url: '/api/v1/conversations',
+    });
+    const ids = listResponse.json().conversations.map((c: { id: number }) => c.id);
+    expect(ids).toEqual([first.id, third.id, second.id]);
+  });
+
   it('rejects empty or oversized message content with a validation envelope', async () => {
     const created = await createConversation(app);
 

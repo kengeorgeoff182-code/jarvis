@@ -6,6 +6,7 @@ import type {
 import type { ConversationStore } from '../ports/conversation-store';
 import type { ChatMessage, LLMProvider } from '../ports/llm-provider';
 import { notFoundError, unexpectedError } from '../errors';
+import { nowIso } from '../clock';
 
 const DEFAULT_TITLE = 'New conversation';
 const PREVIEW_LENGTH = 60;
@@ -34,7 +35,9 @@ export class ConversationService {
   }
 
   create(): ConversationSummary {
-    const now = new Date().toISOString();
+    // Monotonic so same-millisecond creations can never tie on updated_at
+    // (ORDER BY updated_at DESC in the store has no meaningful tie-break).
+    const now = nowIso();
     return this.store.createConversation(DEFAULT_TITLE, now);
   }
 
@@ -65,7 +68,9 @@ export class ConversationService {
     // The provider sees the full history including the message being sent.
     const reply = await this.llm.chat([...history, { role: 'user', content }]);
 
-    const now = new Date().toISOString();
+    // Monotonic for the same reason as create(): the touch must sort
+    // strictly after any earlier write, even within one wall-clock ms.
+    const now = nowIso();
     const messages = this.store.addMessages({
       conversationId,
       messages: [

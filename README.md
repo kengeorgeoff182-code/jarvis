@@ -1,5 +1,7 @@
 # Jarvis
 
+[![CI](https://github.com/kengeorgeoff182-code/jarvis/actions/workflows/ci.yml/badge.svg)](https://github.com/kengeorgeoff182-code/jarvis/actions/workflows/ci.yml)
+
 Personal AI assistant — foundation phase.
 
 This repository is the engineering baseline for Jarvis: a typed TypeScript
@@ -98,5 +100,5 @@ Architecture and decisions: `docs/architecture.md`, `docs/adr/`.
   terminal open while developing. See `docs/adr/0004-repo-location.md`;
   relocation is a planned follow-up.
 - CI runs via GitHub Actions (`.github/workflows/ci.yml`): format,
-  lint, typecheck, test, and build on every push and pull request. It is
-  dormant until the repository has a remote.
+  lint, typecheck, test, and build on every push and pull request, at
+  [kengeorgeoff182-code/jarvis](https://github.com/kengeorgeoff182-code/jarvis/actions).

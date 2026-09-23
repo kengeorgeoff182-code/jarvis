@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { App } from './App';
 import { expectNoAxeViolations } from './test/axe';
 
@@ -111,7 +111,7 @@ describe('conversation list', () => {
 });
 
 describe('sending messages', () => {
-  it('auto-creates a conversation, stores the message, and derives a title', async () => {
+  it('auto-creates a conversation, stores the message, and renders the assistant reply', async () => {
     const fetchMock = stubApi((method, url, body) => {
       if (method === 'GET' && url === '/api/v1/conversations') {
         return { status: 200, body: { conversations: [summary(1, 'Hello Jarvis')] } };
@@ -121,14 +121,23 @@ describe('sending messages', () => {
       }
       if (method === 'POST' && url === '/api/v1/conversations/1/messages') {
         const content = (body as { content: string }).content;
-        return { status: 201, body: message(1, 1, 'user', content) };
+        return {
+          status: 201,
+          body: {
+            userMessage: message(1, 1, 'user', content),
+            assistantMessage: message(2, 1, 'assistant', 'A generated reply.'),
+          },
+        };
       }
       if (method === 'GET' && url === '/api/v1/conversations/1') {
         return {
           status: 200,
           body: {
             ...summary(1, 'Hello Jarvis'),
-            messages: [message(1, 1, 'user', 'Hello Jarvis')],
+            messages: [
+              message(1, 1, 'user', 'Hello Jarvis'),
+              message(2, 1, 'assistant', 'A generated reply.'),
+            ],
           },
         };
       }
@@ -141,16 +150,19 @@ describe('sending messages', () => {
     fireEvent.change(input, { target: { value: 'Hello Jarvis' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
 
-    // The message content is announced and rendered in the transcript.
+    // Both the user turn and the generated reply render in the transcript.
     expect(await screen.findByText('You')).toBeInTheDocument();
     expect((await screen.findAllByText('Hello Jarvis')).length).toBeGreaterThanOrEqual(2);
+    expect(await screen.findByText('A generated reply.')).toBeInTheDocument();
+    expect(screen.getByText('Assistant')).toBeInTheDocument();
 
-    const calls = fetchMock.mock.calls.map(
-      (call) => `${call[1]?.method ?? 'GET'} ${String(call[0])}`,
-    );
-    expect(calls).toContain('POST /api/v1/conversations');
-    expect(calls).toContain('POST /api/v1/conversations/1/messages');
-    expect(calls).toContain('GET /api/v1/conversations/1');
+    // The first-message title refetch happens after the post-send sidebar
+    // refresh — wait for it instead of racing the async tail.
+    const calls = () =>
+      fetchMock.mock.calls.map((call) => `${call[1]?.method ?? 'GET'} ${String(call[0])}`);
+    await waitFor(() => expect(calls()).toContain('GET /api/v1/conversations/1'));
+    expect(calls()).toContain('POST /api/v1/conversations');
+    expect(calls()).toContain('POST /api/v1/conversations/1/messages');
   });
 
   it('keeps the draft and shows an error banner when sending fails', async () => {
@@ -182,6 +194,179 @@ describe('sending messages', () => {
 
     expect(await screen.findByText('Internal server error')).toBeInTheDocument();
     expect(input).toHaveValue('this must survive');
+  });
+
+  it('clears the draft and keeps the transcript when the send persists but refreshes fail', async () => {
+    let listCalls = 0;
+    stubApi((method, url) => {
+      if (method === 'GET' && url === '/api/v1/conversations') {
+        // First call is the initial load; the second is the post-send
+        // sidebar refresh, which fails here.
+        listCalls += 1;
+        return listCalls === 1
+          ? { status: 200, body: { conversations: [summary(1, 'Existing chat')] } }
+          : { status: 500, body: { error: { code: 'UNEXPECTED_ERROR', message: 'boom' } } };
+      }
+      if (method === 'GET' && url === '/api/v1/conversations/1') {
+        // The open fetch sees an empty transcript; the post-send title
+        // refetch fails too — the send itself must still read as successful.
+        return listCalls === 1
+          ? { status: 200, body: { ...summary(1, 'Existing chat'), messages: [] } }
+          : { status: 500, body: { error: { code: 'UNEXPECTED_ERROR', message: 'boom' } } };
+      }
+      if (method === 'POST' && url === '/api/v1/conversations/1/messages') {
+        return {
+          status: 201,
+          body: {
+            userMessage: message(10, 1, 'user', 'persisted turn'),
+            assistantMessage: message(11, 1, 'assistant', 'kept reply'),
+          },
+        };
+      }
+      return undefined;
+    });
+
+    render(<App />);
+
+    const item = await screen.findByRole('button', { name: 'Existing chat' });
+    fireEvent.click(item);
+    await screen.findByText('No messages yet — send the first one below.');
+
+    const input = screen.getByLabelText('Message Jarvis');
+    fireEvent.change(input, { target: { value: 'persisted turn' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    // The notice must not claim the send failed.
+    expect(
+      await screen.findByText('Message sent, but the sidebar could not be refreshed.'),
+    ).toBeInTheDocument();
+    // A persisted send clears the draft — keeping it would bait a duplicate.
+    // (Draft clearing lands a microtask after the banner, so wait for it.)
+    await waitFor(() => expect(input).toHaveValue(''));
+    // Both turns survive in the transcript from the send response.
+    expect(screen.getByText('persisted turn')).toBeInTheDocument();
+    expect(screen.getByText('kept reply')).toBeInTheDocument();
+  });
+
+  it('renders the conversation the user switched to while a send was in flight', async () => {
+    // Deferred routes need raw control over when the Response object is
+    // created, so this test stubs fetch directly (stubApi would wrap the
+    // pending promise into an immediate bogus response).
+    const resolvers = new Map<number, (response: Response) => void>();
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      if (method === 'GET' && url === '/api/v1/conversations') {
+        return Promise.resolve(
+          jsonResponse(200, { conversations: [summary(1, 'Slow send'), summary(2, 'Other chat')] }),
+        );
+      }
+      if (method === 'GET' && url === '/api/v1/conversations/1') {
+        return Promise.resolve(jsonResponse(200, { ...summary(1, 'Slow send'), messages: [] }));
+      }
+      if (method === 'GET' && url === '/api/v1/conversations/2') {
+        return new Promise<Response>((resolve) => {
+          resolvers.set(2, resolve);
+        });
+      }
+      if (method === 'POST' && url === '/api/v1/conversations/1/messages') {
+        return new Promise<Response>((resolve) => {
+          resolvers.set(-1, resolve);
+        });
+      }
+      return Promise.reject(new Error(`Unhandled request: ${method} ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Slow send' }));
+    await screen.findByText('No messages yet — send the first one below.');
+
+    const input = screen.getByLabelText('Message Jarvis');
+    fireEvent.change(input, { target: { value: 'in-flight message' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    // User navigates to another conversation while the send hangs.
+    fireEvent.click(screen.getByRole('button', { name: 'Other chat' }));
+
+    // The send then resolves and fully completes (draft clears only after
+    // the post-send refresh settles).
+    resolvers.get(-1)!(
+      jsonResponse(201, {
+        userMessage: message(30, 1, 'user', 'in-flight message'),
+        assistantMessage: message(31, 1, 'assistant', 'slow reply'),
+      }),
+    );
+    await waitFor(() => expect(input).toHaveValue(''));
+
+    // The navigation's own detail fetch lands last — it must win the view.
+    resolvers.get(2)!(
+      jsonResponse(200, {
+        ...summary(2, 'Other chat'),
+        messages: [message(40, 2, 'user', 'other chat body')],
+      }),
+    );
+    expect(await screen.findByText('other chat body')).toBeInTheDocument();
+    expect(screen.queryByText('in-flight message')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Other chat' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+  });
+
+  it('ignores a stale detail response after the user switches conversations', async () => {
+    const resolvers = new Map<number, (response: Response) => void>();
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      if (method === 'GET' && url === '/api/v1/conversations') {
+        return Promise.resolve(
+          jsonResponse(200, {
+            conversations: [summary(1, 'Slow detail'), summary(2, 'Fast detail')],
+          }),
+        );
+      }
+      if (method === 'GET' && url === '/api/v1/conversations/1') {
+        return new Promise<Response>((resolve) => {
+          resolvers.set(1, resolve);
+        });
+      }
+      if (method === 'GET' && url === '/api/v1/conversations/2') {
+        return new Promise<Response>((resolve) => {
+          resolvers.set(2, resolve);
+        });
+      }
+      return Promise.reject(new Error(`Unhandled request: ${method} ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<App />);
+
+    await screen.findByRole('button', { name: 'Slow detail' });
+    fireEvent.click(screen.getByRole('button', { name: 'Slow detail' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fast detail' }));
+
+    // The fast conversation resolves first and becomes the active view.
+    resolvers.get(2)!(
+      jsonResponse(200, {
+        ...summary(2, 'Fast detail'),
+        messages: [message(20, 2, 'user', 'fast conversation body')],
+      }),
+    );
+    await screen.findByText('fast conversation body');
+
+    // The slow response lands afterwards and must be dropped.
+    resolvers.get(1)!(
+      jsonResponse(200, {
+        ...summary(1, 'Slow detail'),
+        messages: [message(21, 1, 'user', 'stale conversation body')],
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(screen.queryByText('stale conversation body')).not.toBeInTheDocument();
+    expect(screen.getByText('fast conversation body')).toBeInTheDocument();
   });
 });
 

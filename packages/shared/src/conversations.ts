@@ -1,9 +1,9 @@
 import { z } from 'zod';
 
 /**
- * Roles a stored message can carry. Only `user` messages are creatable
- * through the public API today; `assistant`/`system` are reserved for the
- * LLM integration phase.
+ * Roles a stored message can carry. `user` messages arrive from the client;
+ * `assistant` replies are generated server-side by the LLM provider;
+ * `system` is reserved for future prompt-injection.
  */
 export const messageRoleSchema = z.enum(['user', 'assistant', 'system']);
 
@@ -53,3 +53,14 @@ export const conversationListResponseSchema = z.object({
 });
 
 export type ConversationListResponse = z.infer<typeof conversationListResponseSchema>;
+
+/**
+ * POST /conversations/:id/messages response — the persisted user message
+ * plus the assistant reply generated for it, in transcript order.
+ */
+export const appendMessageResponseSchema = z.object({
+  userMessage: messageSchema,
+  assistantMessage: messageSchema,
+});
+
+export type AppendMessageResponse = z.infer<typeof appendMessageResponseSchema>;

@@ -16,6 +16,17 @@ const envSchema = z.object({
     ),
   // SQLite database file. Use ':memory:' for ephemeral stores (tests).
   DB_PATH: z.string().min(1).default('./data/jarvis.db'),
+  // LLM reply generation (OpenAI-compatible APIs: OpenAI, Ollama, LM Studio...).
+  // An empty LLM_API_KEY is allowed at boot — history still serves — but
+  // sending a message then fails with a clear 502 naming the variable.
+  LLM_BASE_URL: z
+    .string()
+    .url()
+    .default('https://api.openai.com/v1')
+    .transform((value) => value.replace(/\/+$/, '')),
+  LLM_API_KEY: z.string().default(''),
+  LLM_MODEL: z.string().min(1).default('gpt-4o-mini'),
+  LLM_TIMEOUT_MS: z.coerce.number().int().positive().max(300_000).default(30_000),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;

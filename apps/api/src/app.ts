@@ -12,6 +12,8 @@ import {
   createSchema,
   SQLiteConversationStore,
 } from './adapters/sqlite-conversation-store';
+import { OpenAICompatibleLLMProvider } from './adapters/openai-compatible-llm-provider';
+import type { LLMProvider } from './ports/llm-provider';
 import { ConversationService } from './services/conversation-service';
 
 const API_PREFIX = '/api/v1';
@@ -26,6 +28,12 @@ export interface BuildAppOptions {
    * closes) the configured file database itself.
    */
   db?: DatabaseSync;
+  /**
+   * LLM provider override (tests inject a fake; the app never hits a real
+   * model in the suite). Defaults to the configured OpenAI-compatible
+   * adapter.
+   */
+  llm?: LLMProvider;
 }
 
 /**
@@ -56,7 +64,15 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     db.close();
   });
 
-  const conversationService = new ConversationService(new SQLiteConversationStore(db));
+  const llm =
+    options.llm ??
+    new OpenAICompatibleLLMProvider({
+      apiKey: config.LLM_API_KEY,
+      baseUrl: config.LLM_BASE_URL,
+      model: config.LLM_MODEL,
+      timeoutMs: config.LLM_TIMEOUT_MS,
+    });
+  const conversationService = new ConversationService(new SQLiteConversationStore(db), llm);
 
   await app.register(healthRoutes, { prefix: API_PREFIX });
   await app.register(conversationRoutes, {

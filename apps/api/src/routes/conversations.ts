@@ -1,12 +1,12 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import {
+  appendMessageResponseSchema,
   conversationDetailSchema,
   conversationListResponseSchema,
   conversationSummarySchema,
   createConversationInputSchema,
   createMessageInputSchema,
-  messageSchema,
 } from '@jarvis/shared';
 import type { ConversationService } from '../services/conversation-service';
 import { validationError } from '../errors';
@@ -62,7 +62,7 @@ export const conversationRoutes: FastifyPluginAsync<ConversationRoutesOptions> =
   app.post<{ Params: { id: string } }>('/conversations/:id/messages', async (request, reply) => {
     const { id } = parseOrThrow(idParamSchema, request.params, 'conversation id');
     const body = parseOrThrow(createMessageInputSchema, request.body, 'message payload');
-    const message = service.sendMessage(id, body.content);
-    return reply.code(201).send(messageSchema.parse(message));
+    const result = await service.sendMessage(id, body.content);
+    return reply.code(201).send(appendMessageResponseSchema.parse(result));
   });
 };

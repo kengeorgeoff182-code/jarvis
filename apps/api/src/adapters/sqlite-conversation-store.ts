@@ -109,13 +109,12 @@ export class SQLiteConversationStore implements ConversationStore {
     return { ...conversation, messages };
   }
 
-  addMessage(input: {
+  addMessages(input: {
     conversationId: number;
-    role: Message['role'];
-    content: string;
+    messages: Array<{ role: Message['role']; content: string }>;
     now: string;
-  }): Message | undefined {
-    const { conversationId, role, content, now } = input;
+  }): Message[] | undefined {
+    const { conversationId, messages, now } = input;
     const exists = this.db.prepare('SELECT 1 FROM conversations WHERE id = ?').get(conversationId);
     if (exists === undefined) {
       return undefined;
@@ -123,26 +122,32 @@ export class SQLiteConversationStore implements ConversationStore {
 
     this.db.exec('BEGIN');
     try {
-      const result = this.db
-        .prepare(
-          `INSERT INTO messages (conversation_id, role, content, created_at)
-           VALUES (?, ?, ?, ?)`,
-        )
-        .run(conversationId, role, content, now);
+      const insert = this.db.prepare(
+        `INSERT INTO messages (conversation_id, role, content, created_at)
+         VALUES (?, ?, ?, ?)`,
+      );
+      for (const message of messages) {
+        insert.run(conversationId, message.role, message.content, now);
+      }
       this.db
         .prepare('UPDATE conversations SET updated_at = ? WHERE id = ?')
         .run(now, conversationId);
       this.db.exec('COMMIT');
-      return this.db
-        .prepare(
-          `SELECT id, conversation_id AS conversationId, role, content, created_at AS createdAt
-           FROM messages WHERE id = ?`,
-        )
-        .get(Number(result.lastInsertRowid)) as unknown as MessageRow;
     } catch (error) {
       this.db.exec('ROLLBACK');
       throw error;
     }
+
+    // Single-writer store: the rows just inserted are the newest in this
+    // conversation, so read back exactly `messages.length` of them.
+    const rows = this.db
+      .prepare(
+        `SELECT id, conversation_id AS conversationId, role, content, created_at AS createdAt
+         FROM messages WHERE conversation_id = ?
+         ORDER BY id DESC LIMIT ?`,
+      )
+      .all(conversationId, messages.length) as unknown as MessageRow[];
+    return rows.reverse();
   }
 
   setTitle(id: number, title: string): boolean {

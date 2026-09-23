@@ -13,15 +13,15 @@ export interface ConversationStore {
   listConversations(): ConversationSummary[];
   getConversation(id: number): ConversationDetail | undefined;
   /**
-   * Appends a message and bumps the conversation's updatedAt atomically.
-   * Returns undefined when the conversation does not exist.
+   * Appends one or more messages and bumps the conversation's updatedAt
+   * atomically. Returns the persisted messages in input order, or undefined
+   * when the conversation does not exist.
    */
-  addMessage(input: {
+  addMessages(input: {
     conversationId: number;
-    role: Message['role'];
-    content: string;
+    messages: Array<{ role: Message['role']; content: string }>;
     now: string;
-  }): Message | undefined;
+  }): Message[] | undefined;
   /** Renames a conversation. Returns false when the id does not exist. */
   setTitle(id: number, title: string): boolean;
 }

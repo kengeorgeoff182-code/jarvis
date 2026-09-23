@@ -1,15 +1,15 @@
 import {
+  appendMessageResponseSchema,
   conversationDetailSchema,
   conversationListResponseSchema,
   conversationSummarySchema,
   errorEnvelopeSchema,
   healthResponseSchema,
-  messageSchema,
+  type AppendMessageResponse,
   type ConversationDetail,
   type ConversationListResponse,
   type ConversationSummary,
   type HealthResponse,
-  type Message,
 } from '@jarvis/shared';
 
 const API_BASE = '/api/v1';
@@ -94,10 +94,14 @@ export function getConversation(id: number): Promise<ConversationDetail> {
   });
 }
 
-export function sendMessage(id: number, content: string): Promise<Message> {
+/**
+ * Sends a user message; resolves with both the persisted user turn and the
+ * generated assistant reply (the request covers LLM latency).
+ */
+export function sendMessage(id: number, content: string): Promise<AppendMessageResponse> {
   return apiRequest(`${API_BASE}/conversations/${id}/messages`, {
     method: 'POST',
     body: { content },
-    schema: messageSchema,
+    schema: appendMessageResponseSchema,
   });
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ConversationDetail, ConversationSummary } from '@jarvis/shared';
 import {
   ApiError,
@@ -18,6 +18,12 @@ function messageFor(error: unknown, fallback: string): string {
 /**
  * Chat workspace view. Owns all conversation state and talks to the API only
  * through src/lib/api.ts (components never fetch directly).
+ *
+ * Send-flow contract: once `sendMessage` resolves, the turn IS persisted —
+ * every later step (sidebar refetch, first-message detail refetch) is
+ * best-effort and must never report the send itself as failed. Reporting a
+ * persisted send as failed would keep the draft alive and bait the user into
+ * sending the same message twice.
  */
 export function App() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -26,6 +32,9 @@ export function App() {
   const [activeId, setActiveId] = useState<number | null>(null);
   const [active, setActive] = useState<ConversationDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  // Monotonic token for open/detail requests: a slow response for a
+  // conversation the user has already left must never clobber the view.
+  const detailRequestRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,14 +62,22 @@ export function App() {
     }
     setBanner(null);
     setActiveId(id);
+    const request = ++detailRequestRef.current;
     setDetailLoading(true);
     try {
       const detail = await getConversation(id);
-      setActive(detail);
+      // Superseded by a newer open/send — drop this response.
+      if (request === detailRequestRef.current) {
+        setActive(detail);
+      }
     } catch (error) {
-      setBanner({ message: messageFor(error, 'Could not open the conversation.') });
+      if (request === detailRequestRef.current) {
+        setBanner({ message: messageFor(error, 'Could not open the conversation.') });
+      }
     } finally {
-      setDetailLoading(false);
+      if (request === detailRequestRef.current) {
+        setDetailLoading(false);
+      }
     }
   }
 
@@ -78,42 +95,75 @@ export function App() {
 
   /**
    * Sends a message, auto-creating a conversation when none is open. Throws
-   * on failure so the Composer keeps the draft for retry.
+   * only while nothing is persisted (creation, send) so the Composer keeps
+   * the draft for retry. Post-send refreshes below never throw: the turn is
+   * already stored, and a failed refresh is surfaced as a notice instead.
    */
   async function handleSend(content: string) {
     setBanner(null);
-    try {
-      let targetId = activeId;
-      let target = active;
+    let targetId: number;
+    let isFirstMessage: boolean;
+    // Snapshot the detail token: if the user navigates while the send is
+    // in flight, the refetch below must not steal the token and drop the
+    // navigation's own in-flight detail fetch. (Declared here, not inside
+    // the try, so the post-persist tail can read it.)
+    const detailTokenAtSend = detailRequestRef.current;
 
-      if (targetId === null || target === null) {
+    try {
+      let target = active;
+      if (activeId === null || target === null) {
         const created = await createConversation();
-        targetId = created.id;
         target = { ...created, messages: [] };
         setConversations((previous) => [created, ...previous]);
         setActiveId(created.id);
         setActive(target);
       }
+      // `active.id` always equals `activeId` (they are set together), so the
+      // local target's id is authoritative in both branches.
+      targetId = target.id;
+      isFirstMessage = target.messages.length === 0;
 
-      const message = await sendMessage(targetId, content);
+      // The request covers LLM latency and returns the persisted user turn
+      // plus the generated assistant reply together.
+      const { userMessage, assistantMessage } = await sendMessage(targetId, content);
       setActive((previous) =>
         previous !== null && previous.id === targetId
-          ? { ...previous, messages: [...previous.messages, message] }
+          ? {
+              ...previous,
+              messages: [...previous.messages, userMessage, assistantMessage],
+            }
           : previous,
       );
+    } catch (error) {
+      // Nothing was persisted — the draft survives for retry.
+      setBanner({ message: messageFor(error, 'Your message could not be sent.') });
+      throw error;
+    }
 
-      // The conversation moved to the top (updatedAt) and, on the first
-      // message, was retitled server-side — resync both.
+    // Persisted from here on. The conversation moved to the top (updatedAt)
+    // and, on the first message, was retitled server-side — resync the list,
+    // but a failed refresh is only a notice, never a failed send.
+    try {
       const { conversations: fresh } = await listConversations();
       setConversations(fresh);
-      if (target.messages.length === 0) {
+    } catch {
+      setBanner({ message: 'Message sent, but the sidebar could not be refreshed.' });
+    }
+    if (isFirstMessage && detailRequestRef.current === detailTokenAtSend) {
+      // The user has not navigated since the send started: re-fetch so the
+      // header shows the server-derived title. The token check drops the
+      // response if navigation happens while this fetch is in flight.
+      const request = ++detailRequestRef.current;
+      try {
         const detail = await getConversation(targetId);
-        setActive(detail);
+        if (request === detailRequestRef.current) {
+          setActive((previous) =>
+            previous !== null && previous.id === targetId ? detail : previous,
+          );
+        }
+      } catch {
+        // Transcript already shows both turns from the send response.
       }
-    } catch (error) {
-      const message = messageFor(error, 'Your message could not be sent.');
-      setBanner({ message });
-      throw error;
     }
   }
 

@@ -8,10 +8,12 @@ export {
   createConversationInputSchema,
   createMessageInputSchema,
   conversationListResponseSchema,
+  appendMessageResponseSchema,
   type ConversationSummary,
   type Message,
   type ConversationDetail,
   type CreateConversationInput,
   type CreateMessageInput,
   type ConversationListResponse,
+  type AppendMessageResponse,
 } from './conversations';

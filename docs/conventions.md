@@ -105,7 +105,8 @@ Abbreviations stay all-caps where conventional (`API`, `HTTP`, `LLM`).
 - Vitest; run with `npm test` from the root (api and web suites).
 - Unit tests never hit the network, a real LLM, or the filesystem.
 - API tests use Fastify `app.inject()` against the same `buildApp()` wiring
-  as production.
+  as production; an LLM provider is injected as a deterministic fake, and
+  the real adapter is tested against a stubbed `fetch`.
 - Web tests render with Testing Library, assert on user-visible text/roles,
   and stub `fetch`.
 - Web a11y: every rendered UI state is also audited with axe-core
@@ -143,6 +144,7 @@ Abbreviations stay all-caps where conventional (`API`, `HTTP`, `LLM`).
 
 ## 14. Performance
 
-- No premature optimization, but no accidental costs either: streaming
-  responses for chat (phase 2), no unbounded client state, indexes before
-  any query in the store, and bundle-size awareness in the web app.
+- No premature optimization, but no accidental costs either: stream LLM
+  replies once latency matters (currently one request covers the full turn),
+  no unbounded client state, indexes before any query in the store, and
+  bundle-size awareness in the web app.
